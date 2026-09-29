@@ -4,17 +4,43 @@ const AuditLog = require('../models/AuditLog');
 const { WARD_ENUM } = require('../models/Voter');
 const { Parser } = require('json2csv');
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 // @desc    Register a new Recruiter
 // @route   POST /api/admin/recruiters
 // @access  Private (Admin)
 const createRecruiter = async (req, res, next) => {
   try {
-    const { firstName, lastName, email, phone, address, password, confirmPassword } = req.body;
+    const { firstName, lastName, email, phone, address, password, confirmPassword, assignedWard } = req.body;
 
     if (!firstName || !lastName || !email || !phone || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required recruiter fields.',
+        message: 'Please provide all required recruiter fields: First name, Last name, Email, Phone, Password, and Assigned Ward.',
+      });
+    }
+
+    if (!assignedWard || !WARD_ENUM.includes(assignedWard.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select a valid Badagry ward to assign this recruiter to.',
+      });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    // Strict email format verification
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address with a recognized domain (e.g. name@example.com).',
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long.',
       });
     }
 
@@ -25,7 +51,6 @@ const createRecruiter = async (req, res, next) => {
       });
     }
 
-    const cleanEmail = email.trim().toLowerCase();
     const existing = await User.findOne({ email: cleanEmail });
     if (existing) {
       return res.status(400).json({
@@ -38,13 +63,14 @@ const createRecruiter = async (req, res, next) => {
     const recruiterCode = await User.generateRecruiterCode(firstName);
 
     const recruiter = await User.create({
-      firstName,
-      lastName,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
       email: cleanEmail,
-      phone,
-      address: address || '',
+      phone: phone.trim(),
+      address: address ? address.trim() : '',
       password,
       role: 'recruiter',
+      assignedWard: assignedWard.trim(),
       recruiterCode,
       status: 'active',
     });
@@ -55,7 +81,11 @@ const createRecruiter = async (req, res, next) => {
       userEmail: req.user.email,
       userRole: 'admin',
       recruiterCode: recruiter.recruiterCode,
-      details: { recruiterEmail: recruiter.email, recruiterName: `${firstName} ${lastName}` },
+      details: {
+        recruiterEmail: recruiter.email,
+        recruiterName: `${firstName} ${lastName}`,
+        assignedWard: recruiter.assignedWard,
+      },
       ipAddress: req.ip || '127.0.0.1',
     });
 
@@ -70,6 +100,7 @@ const createRecruiter = async (req, res, next) => {
         phone: recruiter.phone,
         address: recruiter.address,
         role: recruiter.role,
+        assignedWard: recruiter.assignedWard,
         recruiterCode: recruiter.recruiterCode,
         status: recruiter.status,
         createdAt: recruiter.createdAt,
@@ -80,7 +111,7 @@ const createRecruiter = async (req, res, next) => {
   }
 };
 
-// @desc    Get all recruiters with search and pagination
+// @desc    Get all recruiters with search, ward filter, and pagination
 // @route   GET /api/admin/recruiters
 // @access  Private (Admin)
 const getRecruiters = async (req, res, next) => {
@@ -88,12 +119,16 @@ const getRecruiters = async (req, res, next) => {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
     const skip = (page - 1) * limit;
-    const { search, status } = req.query;
+    const { search, status, ward } = req.query;
 
     const query = { role: 'recruiter' };
 
     if (status && ['active', 'inactive'].includes(status)) {
       query.status = status;
+    }
+
+    if (ward && ward !== 'All') {
+      query.assignedWard = ward;
     }
 
     if (search) {
@@ -104,6 +139,7 @@ const getRecruiters = async (req, res, next) => {
         { email: searchRegex },
         { phone: searchRegex },
         { recruiterCode: searchRegex },
+        { assignedWard: searchRegex },
       ];
     }
 
@@ -227,6 +263,73 @@ const toggleRecruiterStatus = async (req, res, next) => {
       message: `Recruiter status updated to ${status}.`,
       recruiter: {
         id: recruiter._id,
+        recruiterCode: recruiter.recruiterCode,
+        status: recruiter.status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update recruiter details (e.g. assignedWard, phone, address, name)
+// @route   PATCH /api/admin/recruiters/:id
+// @access  Private (Admin)
+const updateRecruiter = async (req, res, next) => {
+  try {
+    const { assignedWard, phone, address, firstName, lastName } = req.body;
+
+    const recruiter = await User.findById(req.params.id);
+    if (!recruiter || recruiter.role !== 'recruiter') {
+      return res.status(404).json({
+        success: false,
+        message: 'Recruiter not found.',
+      });
+    }
+
+    if (assignedWard !== undefined) {
+      if (assignedWard && !WARD_ENUM.includes(assignedWard.trim())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid ward selected. Must be one of the 10 official Badagry wards.',
+        });
+      }
+      recruiter.assignedWard = assignedWard ? assignedWard.trim() : null;
+    }
+
+    if (phone) recruiter.phone = phone.trim();
+    if (address !== undefined) recruiter.address = address.trim();
+    if (firstName) recruiter.firstName = firstName.trim();
+    if (lastName) recruiter.lastName = lastName.trim();
+
+    await recruiter.save();
+
+    await AuditLog.create({
+      action: 'RECRUITER_UPDATED',
+      performedBy: req.user._id,
+      userEmail: req.user.email,
+      userRole: 'admin',
+      recruiterCode: recruiter.recruiterCode,
+      details: {
+        recruiterEmail: recruiter.email,
+        assignedWard: recruiter.assignedWard,
+        phone: recruiter.phone,
+      },
+      ipAddress: req.ip || '127.0.0.1',
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Recruiter details updated successfully.',
+      recruiter: {
+        id: recruiter._id,
+        firstName: recruiter.firstName,
+        lastName: recruiter.lastName,
+        email: recruiter.email,
+        phone: recruiter.phone,
+        address: recruiter.address,
+        role: recruiter.role,
+        assignedWard: recruiter.assignedWard,
         recruiterCode: recruiter.recruiterCode,
         status: recruiter.status,
       },
@@ -437,6 +540,19 @@ const getAnalytics = async (req, res, next) => {
       })
     );
 
+    // Recruiters assigned per ward breakdown
+    const recruitersByWard = await Promise.all(
+      WARD_ENUM.map(async (w) => {
+        const count = await User.countDocuments({ role: 'recruiter', assignedWard: w });
+        return {
+          ward: w,
+          shortWard: w.split(':')[0].trim(),
+          wardName: w.split(':')[1] ? w.split(':')[1].trim() : w,
+          recruitersCount: count,
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
       stats: {
@@ -450,6 +566,7 @@ const getAnalytics = async (req, res, next) => {
       },
       charts: {
         votersByWard,
+        recruitersByWard,
         registrationsByRecruiter,
         registrationTrend: trendRaw,
         ageDistribution,
@@ -469,6 +586,7 @@ const getWardAnalytics = async (req, res, next) => {
       WARD_ENUM.map(async (wardName) => {
         const totalVoters = await Voter.countDocuments({ ward: wardName });
         const recruitersActive = await Voter.distinct('recruiterCode', { ward: wardName });
+        const assignedRecruitersCount = await User.countDocuments({ role: 'recruiter', assignedWard: wardName });
         const recentRegistrations = await Voter.countDocuments({
           ward: wardName,
           createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
@@ -479,6 +597,7 @@ const getWardAnalytics = async (req, res, next) => {
           code: wardName.split(':')[0].trim(),
           name: wardName.split(':')[1] ? wardName.split(':')[1].trim() : wardName,
           totalVoters,
+          assignedRecruitersCount,
           activeRecruitersCount: recruitersActive.length,
           recentRegistrations,
         };
@@ -499,7 +618,7 @@ const getWardAnalytics = async (req, res, next) => {
 // @access  Private (Admin)
 const getRecruiterAnalytics = async (req, res, next) => {
   try {
-    const recruiters = await User.find({ role: 'recruiter' }).select('firstName lastName email phone recruiterCode status createdAt');
+    const recruiters = await User.find({ role: 'recruiter' }).select('firstName lastName email phone recruiterCode assignedWard status createdAt');
     
     const performance = await Promise.all(
       recruiters.map(async (rec) => {
@@ -513,6 +632,7 @@ const getRecruiterAnalytics = async (req, res, next) => {
           email: rec.email,
           phone: rec.phone,
           recruiterCode: rec.recruiterCode,
+          assignedWard: rec.assignedWard || null,
           status: rec.status,
           totalVoters,
           wardsWorkedCount: wardsWorked.length,
@@ -623,6 +743,7 @@ module.exports = {
   getRecruiters,
   getRecruiterById,
   toggleRecruiterStatus,
+  updateRecruiter,
   getVoters,
   getVoterById,
   getAnalytics,

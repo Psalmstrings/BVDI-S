@@ -56,6 +56,7 @@ const getProfile = async (req, res, next) => {
         phone: recruiter.phone,
         address: recruiter.address,
         recruiterCode: recruiter.recruiterCode,
+        assignedWard: recruiter.assignedWard || null,
         status: recruiter.status,
         stats: {
           totalVoters,

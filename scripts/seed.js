@@ -40,6 +40,7 @@ const seedData = async () => {
         email: 'samuel.akran@bvdi.gov.ng',
         phone: '+2348023456789',
         address: '24 Marina Road, Badagry',
+        assignedWard: 'Ward A: Jegba',
         password: 'Password123!',
         codePrefix: 'SAMUEL',
       },
@@ -49,6 +50,7 @@ const seedData = async () => {
         email: 'mary.senu@bvdi.gov.ng',
         phone: '+2348034567890',
         address: '15 Topo Road, Badagry',
+        assignedWard: 'Ward B: Posukoh',
         password: 'Password123!',
         codePrefix: 'MARY',
       },
@@ -58,6 +60,7 @@ const seedData = async () => {
         email: 'john.whetho@bvdi.gov.ng',
         phone: '+2348045678901',
         address: '8 Ajara Vetho Road, Badagry',
+        assignedWard: 'Ward E: Ajara Vetho',
         password: 'Password123!',
         codePrefix: 'JOHN',
       },
@@ -74,11 +77,12 @@ const seedData = async () => {
         address: rData.address,
         password: rData.password,
         role: 'recruiter',
+        assignedWard: rData.assignedWard,
         recruiterCode: code,
         status: 'active',
       });
       createdRecruiters.push(recruiter);
-      console.log(`[Seed] Recruiter created: ${recruiter.firstName} ${recruiter.lastName} (Code: ${recruiter.recruiterCode})`);
+      console.log(`[Seed] Recruiter created: ${recruiter.firstName} ${recruiter.lastName} (Code: ${recruiter.recruiterCode}, Ward: ${recruiter.assignedWard})`);
     }
 
     console.log('[Seed] Creating Sample Voters across Badagry 10 Wards...');

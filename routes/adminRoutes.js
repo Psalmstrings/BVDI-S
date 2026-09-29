@@ -5,6 +5,7 @@ const {
   getRecruiters,
   getRecruiterById,
   toggleRecruiterStatus,
+  updateRecruiter,
   getVoters,
   getVoterById,
   getAnalytics,
@@ -23,6 +24,7 @@ router.post('/recruiters', createRecruiter);
 router.get('/recruiters', getRecruiters);
 router.get('/recruiters/:id', getRecruiterById);
 router.patch('/recruiters/:id/status', toggleRecruiterStatus);
+router.patch('/recruiters/:id', updateRecruiter);
 
 router.get('/voters', getVoters);
 router.get('/voters/:id', getVoterById);

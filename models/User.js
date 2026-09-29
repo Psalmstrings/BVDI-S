@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 const userSchema = new mongoose.Schema(
   {
     firstName: {
@@ -19,6 +21,12 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      validate: {
+        validator: function (v) {
+          return EMAIL_REGEX.test(v);
+        },
+        message: (props) => `${props.value} is not a valid email address. A valid domain (e.g. .com, .ng) is required.`,
+      },
     },
     phone: {
       type: String,
@@ -41,6 +49,11 @@ const userSchema = new mongoose.Schema(
       enum: ['admin', 'recruiter'],
       default: 'recruiter',
     },
+    assignedWard: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     recruiterCode: {
       type: String,
       unique: true,
@@ -58,6 +71,9 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+userSchema.index({ assignedWard: 1 });
+userSchema.index({ role: 1, assignedWard: 1 });
 
 // Hash password before save
 userSchema.pre('save', async function (next) {

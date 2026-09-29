@@ -8,9 +8,9 @@ const connectDB = async () => {
   // 1. Attempt connecting to local/remote MongoDB URI
   try {
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 2000,
+      serverSelectionTimeoutMS: 15000,
     });
-    console.log(`[Database] MongoDB Connected`);
+    console.log(`[Database] MongoDB Connected successfully`);
     return;
   } catch (err) {
     console.warn(`[Database] Local MongoDB server not reached at ${mongoUri}. Attempting MongoMemoryServer fallback...`);
